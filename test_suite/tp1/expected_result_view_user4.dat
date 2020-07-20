@@ -1,0 +1,21 @@
+<html>
+ <body>
+  <pre>
+<h1>someoneelse</h1>
+someoneelse has 1 friends:
+<ul>
+<li><a href="view_user?user=0">someone</a></li></ul>
+<h2>Wall</h2>
+<p>someone: Hello you</p>
+<p>someone: plop!</p>
+<form action="/post_message" method="get"><input name="user" type="hidden" value="1"><select name="dest">
+<option value="0">someone</option>
+ </select>
+<input type="text" name="msg">
+<input type="submit">
+</form>
+
+  </pre>
+<a href="/">Back to home page</a>
+ </body>
+</html>

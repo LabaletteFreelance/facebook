@@ -1,0 +1,18 @@
+<html>
+ <body>
+  <pre>
+<h1>Help</h1>
+Here are the available commands:<ul>
+<li><code><a href='help'>help</a></code>: print this message</li>
+<li><code><a href='hello?user=0'>hello[?user=&lt;userid&gt;]</a></code>: say hello to <code>userid</code></li>
+<li><code><a href='list_users'>list_users</a></code>: print the list of created users</li>
+<li><code><a href='add_user?user=someone'>add_user?user=&lt;someone&gt;</a></code>: create a new user</li>
+<li><code><a href='view_user?user=0'>view_user?user=&lt;userid&gt;</a></code>: view a user</li>
+<li><code><a href='add_friend?user=0&friend=1'>add_friend?user=&lt;userid&gt;&amp;friend=&lt;friendid&gt;</a></code>: add a friend to user</li>
+<li><code><a href='post_message?user=0&dest=1&msg=Hello%20you'>post_message?user=&lt;userid&gt;&amp;dest=&lt;destod&gt;&amp;msg=&lt;message&gt;</a></code>: add a friend to user</li>
+</ul>
+
+  </pre>
+<a href="/">Back to home page</a>
+ </body>
+</html>
