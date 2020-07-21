@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <netdb.h>
 #include <poll.h>
+#include <pthread.h>
+
 #include "server.h"
 #include "process_requests.h"
 
@@ -128,9 +130,10 @@ int decode(char *dest, const char *src) {
 
 /* parse an url parameter (that looks like "foo=plop") and fill a key_value structure */
 void parse_key_value(char* str, struct key_value* key_value) {
+  char* saveptr;
   char* key, *value;
-  key = strtok(str, "=");
-  value = strtok(NULL, "=");
+  key = strtok_r(str, "=", &saveptr);
+  value = strtok_r(NULL, "=", &saveptr);
   strncpy(key_value->key, key, MAX_URL_LENGTH);
   strncpy(key_value->value, value, MAX_VALUE_LENGTH);
 }
@@ -139,12 +142,44 @@ void parse_key_value(char* str, struct key_value* key_value) {
  *  page_request structure
  */
 void parse_url(char* url, struct page_request *page_request) {
-  NOT_IMPLEMENTED();
+  char* param[MAX_NB_PARAMETERS];
+  int nb_param = 0;
+  char* saveptr;
+
+  /* extract page name */
+  char* page_url = strtok_r(url, "/", &saveptr);
+
+  if(page_url) {
+    /* extract parameters */
+    page_url=strtok_r(page_url, "&", &saveptr);
+
+    if(page_url) {
+      param[0]=strtok_r(NULL, "?", &saveptr);
+
+      if(param[0]) {
+	/* there's at least one parameter */
+
+	/* the other parameters are separated with & */
+	param[0]=strtok_r(param[0], "&", &saveptr);
+	for(int i =1; i<MAX_NB_PARAMETERS; i++) {
+	  param[i] = strtok_r(NULL, "&", &saveptr);
+	  parse_key_value(param[i-1], &page_request->parameters[i-1]);
+	  if(!param[i]) {
+	    nb_param = i;
+	    break;
+	  }
+	}
+      }
+    }
+    strncpy(page_request->url, page_url, MAX_URL_LENGTH);
+  } else {
+     strncpy(page_request->url, "", MAX_URL_LENGTH);
+  }
+
+  page_request->nb_param = nb_param;
 }
 
-/* Process an HTTP "GET" request for PAGE, and send the results to the
-   file descriptor CONNECTION_FD.  */
-static void handle_get (struct page_request *req) {
+void server_process_request(struct page_request* req) {
   /* Send the HTTP response indicating success, and the HTTP header
      for an HTML page.  */
   write (req->connection_fd, ok_response, strlen (ok_response));
@@ -163,7 +198,83 @@ static void handle_get (struct page_request *req) {
   write (req->connection_fd, page_end, strlen (page_end));
   /* All done; close the connection socket.  */
   close (req->connection_fd);
-  free(req);
+}
+
+
+struct monitor{
+  int value;
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+};
+
+static void init_monitor(struct monitor *m, int value) {
+  m->value = value;
+  pthread_mutex_init(&m->mutex, NULL);
+  pthread_cond_init(&m->cond, NULL);
+}
+
+struct page_request *infos[PROD_CONS_ARRAY_SIZE];
+int i_depot, i_extrait;
+struct monitor places_dispo;
+struct monitor info_prete;
+
+
+void* thread_function(void* arg) {
+  static _Atomic int next_rank = 0;
+  int my_rank = next_rank++;
+
+  if(verbose)
+    printf("New worker thread #%d\n", my_rank);
+
+  struct page_request * req = NULL;
+  while(1) {
+    /* wait for a new req to process */
+    pthread_mutex_lock(&info_prete.mutex);
+    while(info_prete.value == 0) {
+      pthread_cond_wait(&info_prete.cond, &info_prete.mutex);
+    }
+    info_prete.value--;
+    req = infos[i_extrait];
+    i_extrait = (i_extrait+1) % PROD_CONS_ARRAY_SIZE;
+    pthread_mutex_unlock(&info_prete.mutex);
+
+    if(verbose) {
+      printf("[thread %d] new request to process: %p (%s)\n", my_rank, req, req->url);
+    }
+    /* notify the producer that we copied the req */
+    pthread_mutex_lock(&places_dispo.mutex);
+    places_dispo.value ++;
+    pthread_cond_signal(&places_dispo.cond);
+    pthread_mutex_unlock(&places_dispo.mutex);
+
+    /* process the req */
+    server_process_request(req);    
+  }
+}
+
+/* Process an HTTP "GET" request for PAGE, and send the results to the
+   file descriptor CONNECTION_FD.  */
+static void handle_get (struct page_request *req) {
+  /* wait until there's a spot available in the infos buffer */
+  pthread_mutex_lock(&places_dispo.mutex);
+  while(places_dispo.value == 0) {
+    pthread_cond_wait(&places_dispo.cond, &places_dispo.mutex);
+  }
+  places_dispo.value--;
+  int cur_indice = i_depot++;
+  i_depot = i_depot % PROD_CONS_ARRAY_SIZE;
+  pthread_mutex_unlock(&places_dispo.mutex);
+  
+  if(verbose) {
+    printf("[master thread] submitting a new request: %p (%s)\n", req, req->url);
+  }
+
+  /* we found a spot in the infos buffer. Copy the req pointer and notify one of the threads */
+  pthread_mutex_lock(&info_prete.mutex);
+  infos[cur_indice] = req;
+  info_prete.value++;
+  pthread_cond_signal(&info_prete.cond);
+  pthread_mutex_unlock(&info_prete.mutex);
 }
 
 /* Handle a client connection on the file descriptor CONNECTION_FD.  */
@@ -222,17 +333,11 @@ void handle_connection (int connection_fd) {
     }
     else {
       struct page_request *req = malloc(sizeof(struct page_request));
-      memset(req, 0xff, sizeof(struct page_request));
       req->connection_fd = connection_fd;
 
       char decoded_url[sizeof(buffer)];
       decode(decoded_url, url);
       parse_url(decoded_url, req);
-
-      assert(req->nb_param >= 0);
-      assert(req->nb_param < MAX_NB_PARAMETERS);
-      assert(req->url[0] != '/');
-
       printf("page requested: %s with parameters: ", req->url);
       for(int i = 0; i<req->nb_param; i++) {
 	printf("%s = %s,", req->parameters[i].key, req->parameters[i].value);
@@ -250,6 +355,21 @@ void handle_connection (int connection_fd) {
     system_error ("read");
 }
 
+static pthread_t tids[POOL_SIZE];
+void server_init() {
+  init_monitor(&places_dispo, PROD_CONS_ARRAY_SIZE);
+  init_monitor(&info_prete, 0);
+  i_depot = 0;
+  i_extrait = 0;
+
+  for(int i=0; i<POOL_SIZE; i++) {
+    pthread_create(&tids[i], NULL, thread_function, NULL);
+  }
+}
+
+void server_finalize() {
+
+}
 
 void server_run (uint16_t port, int ipVersion) {
   struct sockaddr_in socket_address;
@@ -259,6 +379,9 @@ void server_run (uint16_t port, int ipVersion) {
   int on = 1;
   struct addrinfo hints, *servinfo, *p;
   char service[16];
+
+  /* initialize the server */
+  server_init();
 
   /* Call student's initialization code */
   init();
@@ -388,4 +511,6 @@ void server_run (uint16_t port, int ipVersion) {
     /* Handling of this connection. */
     handle_connection(connection);
   }
+
+  server_finalize();
 }

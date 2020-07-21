@@ -1,0 +1,6 @@
+Name: cmocka
+Description: The cmocka unit testing library
+Version: 1.1.0
+Libs: -L/home/trahay/Documents/enseignement/csc4508/csc4508_facebook/memcache/cmocka/lib -lcmocka
+Cflags: -I/home/trahay/Documents/enseignement/csc4508/csc4508_facebook/memcache/cmocka/include
+

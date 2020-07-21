@@ -70,6 +70,8 @@ extern void module_close (struct server_module* module);
 /* Run the server on LOCAL_ADDRESS and PORT.  */
 extern void server_run (uint16_t port, int ipVersion);
 
+#define POOL_SIZE 10
+#define PROD_CONS_ARRAY_SIZE (10*POOL_SIZE)
 
 #define MAX_URL_LENGTH 128
 #define MAX_VALUE_LENGTH 4096
@@ -81,17 +83,18 @@ struct key_value {
   char value[MAX_VALUE_LENGTH];
 };
 
-/* This structure contains the informations on a page request.
- * For instance, if the user requests the url "/display?user=plip&foo=plop&bar=plup",
- * the structure will contain the following:
- */
-struct page_request {
-  char url[MAX_URL_LENGTH]; //"display"
-  struct key_value parameters[MAX_NB_PARAMETERS]; // [ {user, plip}, {foo, plop}, {bar, plup} ]
-  int nb_param; // 3
+struct page_reply {
+  char reply[MAX_REPLY_LENGTH];
+  struct timeval timestamp;
+};
 
-  int connection_fd; // the file descriptor
-  char reply[MAX_REPLY_LENGTH]; // "HTTP/1.0 200 OK\nContent-type: text/html\n...."
+struct page_request {
+  char url[MAX_URL_LENGTH];
+  struct key_value parameters[MAX_NB_PARAMETERS];
+  int nb_param;
+
+  int connection_fd;
+  char reply[MAX_REPLY_LENGTH];
 };
 
 /* search for a key in the page parameters */

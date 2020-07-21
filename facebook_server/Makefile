@@ -11,7 +11,9 @@ SOURCES		= common.c process_requests.c server.c main.c
 # Object files corresponding to source files.
 OBJECTS		= $(SOURCES:.c=.o)
 # Compilation flags
-CFLAGS = -Wall -pthread -g
+CFLAGS = -Wall -pthread -g -I../memcache
+
+LDFLAGS= -lrt -L../memcache -lmemcache
 
 ### Rules.  ############################################################
 
@@ -30,7 +32,7 @@ cleanall: clean
 # dynamically loaded modules can bind symbols in the program.  Link in
 # libdl, which contains calls for dynamic loading.
 server:         $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # All object files in the server depend on server.h.  But use the
 # default rule for building object files from source files.
